@@ -34,27 +34,24 @@ snekboxd is a Python-based application designed to help Letterboxd users refine 
    ```
    python snekboxd.py
    ```
-
-## Usage
-
-1. The GUI will present you with a series of movies to rank. Enter the numbers corresponding to your preferred order from best to worst (e.g., "31254" for 5 movies, movie #3 being "best" and #4 being "worst").
-
-2. Press Tab or Enter, or click "Submit Ranking" to confirm your ranking and move to the next set of movies.
-
-3. Continue ranking movies until you're satisfied or want to quit.
-
-4. When you quit, a `changed_ratings.csv` file will be generated in the `db` folder, containing only the movies whose ratings have changed as a result of the ranking process.
-
-5. Review the changes and import the `changed_ratings.csv` file back into Letterboxd to update your ratings.
-
-## How it Works
+## How It Works & Usage
 
 1. snekboxd creates a working copy of your ratings file and shuffles the movies into a "bag."
-2. It presents you with a small batch of those movies at a time, fetching posters from TMDB for visual reference. (Note: Fetching can be slow, causing the program to become unresponsive for a couple seconds. But once fetched, the images are saved for future use so they don't need to be fetched again)
-3. You rank the presented movies based on your preference.
-4. The program adjusts the ratings of the ranked movies to maintain consistency with your choices.
-5. This process continues until you decide to quit or have ranked all movies.
-6. Upon quitting, snekboxd generates a diff file with only the changed ratings.
+
+2. The GUI presents you with a small batch (typically 5) of movies to rank, fetching posters from TMDB for visual reference. 
+   - Note: Fetching can be slow initially, causing the program to become unresponsive for a couple seconds. However, once fetched, the images are saved for future use to speed up subsequent runs.
+
+3. Enter the numbers corresponding to your preferred order from best to worst into the text field (e.g., "31254", where movie #3 is "best" and #4 is "worst").
+
+4. Press Tab or Enter, or click "Submit Ranking" to confirm your ranking and move to the next set of movies.
+
+5. The program adjusts the ratings of the ranked movies to maintain consistency with your choices.
+
+6. Continue ranking movies until you're satisfied or want to quit.
+
+7. When you quit, snekboxd generates a `changed_ratings.csv` file in the `db` folder, containing only the movies whose ratings have changed as a result of the ranking process.
+
+8. Review the changes and import the `changed_ratings.csv` file back into Letterboxd to update your ratings.
 
 ## Acknowledgments
 
