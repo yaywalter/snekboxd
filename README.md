@@ -28,9 +28,9 @@ snekboxd is a Python-based application designed to help Letterboxd users refine 
    git clone https://github.com/yaywalter/snekboxd.git
    cd snekboxd
    ```
-2. Export and unzip Letterboxd data, then copy your ratings.csv file into the db subfolder.
+2. Export and unzip your Letterboxd data, then copy your `ratings.csv` file into the `db` subfolder.
 
-3. Run snekboxd.py (required packages will be installed automatically):
+3. Run `snekboxd.py` (Required 3rd party libraries `Pillow`, `requests`, and `BeautifulSoup4` will be installed automatically if missing):
    ```
    python snekboxd.py
    ```
