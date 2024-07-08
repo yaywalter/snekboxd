@@ -1,4 +1,4 @@
-# snekboxd
+# Snekboxd
 
 A tool for increasing self-consistency among your Letterboxd ratings, in the form of a movie ranking game.
 
@@ -24,7 +24,7 @@ snekboxd is a Python-based application designed to help Letterboxd users refine 
 ## Installation
 
 1. Download the latest release and unzip.
-2. Export your Letterboxd data from `letterboxd.com/settings/data/` (requires Letterboxd Pro) and unzip, then copy your `ratings.csv` file into the `db` subfolder.
+2. Export your Letterboxd data from [letterboxd.com/settings/data/](https://www.letterboxd.com/settings/data/) (requires Letterboxd Pro) and unzip, then copy your `ratings.csv` file into the `db` subfolder.
 3. (Optional) Run `bulk_scrape_posters.py` to scrape all movie poster assets upfront so they don't have to be scraped as you use Snekboxd.
    ```
    python bulk_scrape_posters.py
@@ -35,7 +35,7 @@ snekboxd is a Python-based application designed to help Letterboxd users refine 
    ```
 ## How It Works & Usage
 ### Mode Selecction
-When running Letterboxd, you'll first be asked to choose between one of two modes of operation within the terminal:
+When running Snekboxd, you'll first be asked to choose between one of two modes of operation within the terminal:
 1. Re-evaluate Existing Ratings - This mode is for "sanity checking" your pre-existing ratings by asking you to rank groups of films you've seen, automatically swapping the ratings around to match your ranking if they don't already.
 2. Rank Newly Watched Film Against Others - This mode is for quickly determining a rating for a newly watched film by repeatedly pitting it against other films you've seen.
 
