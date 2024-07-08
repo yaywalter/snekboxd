@@ -1,10 +1,24 @@
 import csv
-import requests
-from bs4 import BeautifulSoup
 import time
 import os
 import logging
 import re
+
+# Install and import 3rd-party libraries
+def install(package_name,import_name=None):
+    if import_name == None:
+        import_name = package_name
+    try:
+        importlib.import_module(import_name)
+    except ImportError:
+        print(f"{package_name} not found. Installing...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
+
+install('requests')
+install('beautifulsoup4','bs4')
+
+from bs4 import BeautifulSoup
+import requests
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
