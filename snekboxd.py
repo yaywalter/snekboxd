@@ -1,289 +1,143 @@
-# Standard library imports
-import importlib
-import subprocess
-import sys
-import csv
-import random
-import os
-import shutil
-import hashlib
-import re
-import logging
-import tkinter as tk
+import csv, os, logging, tkinter as tk
 from tkinter import ttk
-from collections import deque
-from tkinter import messagebox
 from datetime import datetime
+from typing import List, Optional
+from dataclasses import dataclass
 
+from lib.helper_functions import (
+    install, Movie, get_file_md5, download_poster, get_tmdb_poster_url,
+    shuffle_deque, sanitize_filename,
+    load_csv, save_csv, create_working_copy, create_movie_bag, select_movies,
+    update_ratings, compare_csvs, validated_year_input, validated_rating_input,
+    validated_uri_input
+)
 
-# Install and import 3rd-party libraries
-def install(package_name,import_name=None):
-    if import_name == None:
-        import_name = package_name
-    try:
-        importlib.import_module(import_name)
-    except ImportError:
-        print(f"{package_name} not found. Installing...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
-
-install('Pillow','PIL')
-install('requests')
-install('beautifulsoup4','bs4')
-install('screeninfo')
-
+install('Pillow', 'PIL')
 from PIL import Image, ImageTk
-from bs4 import BeautifulSoup
-import requests
+
+install('screeninfo')
 import screeninfo
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-class Movie:
-    def __init__(self, date, name, year, uri, rating):
-        self.date = date
-        self.name = name
-        self.year = year
-        self.uri = uri
-        self.rating = float(rating)
-        self.image_path = self.get_image_path()
-
-    def get_image_path(self):
-        uri_id = self.uri.split('/')[-1]
-        image_path = f'./images/{sanitize_filename(self.name)} ({uri_id}).jpg'
-        if not os.path.exists(image_path):
-            no_image_path = './assets/no_image.jpg'
-            if os.path.exists(no_image_path):
-                shutil.copy(no_image_path, image_path)
-                return image_path
-            else:
-                return None
-        return image_path
-
-def get_headers():
-    return {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-    }
-
-def get_file_md5(filename):
-    hash_md5 = hashlib.md5()
-    with open(filename, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
-
-def download_poster(url, filename):
-    response = requests.get(url, headers=get_headers(), allow_redirects=True)
-    if response.status_code == 200:
-        content_type = response.headers.get('Content-Type', '')
-        if 'image' in content_type:
-            with open(filename, 'wb') as file:
-                file.write(response.content)
-            logging.info(f"Downloaded: {filename}")
-            return True
-        else:
-            logging.error(f"Content is not an image for {filename}. Content-Type: {content_type}")
-    else:
-        logging.error(f"Failed to download: {filename}. Status code: {response.status_code}")
-    return False
-
-def get_tmdb_poster_url(letterboxd_url):
-    response = requests.get(letterboxd_url, headers=get_headers(), allow_redirects=True)
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.text, 'html.parser')
-        tmdb_link = soup.find('a', {'data-track-action': 'TMDb'})
-        if tmdb_link and 'href' in tmdb_link.attrs:
-            tmdb_url = tmdb_link['href']
-            tmdb_response = requests.get(tmdb_url, headers=get_headers(), allow_redirects=True)
-            if tmdb_response.status_code == 200:
-                tmdb_soup = BeautifulSoup(tmdb_response.text, 'html.parser')
-                og_image = tmdb_soup.find('meta', property='og:image')
-                if og_image and 'content' in og_image.attrs:
-                    return og_image['content']
-    return None
-
-def shuffle_deque(d):
-    l = list(d)
-    random.shuffle(l)
-    d.clear()
-    d.extend(l)
-
-def sanitize_filename(filename):
-    # Remove or replace characters that are invalid in filenames
-    return re.sub(r'[<>:"/\\|?*]', '_', filename)
-
-def validate_rating(input_rating):
-    try:
-        rating = float(input_rating)
-    except:
-        raise TypeError("Rating must be a number!")
-        
-    rounded_rating = round(rating * 2) / 2  # Round to nearest 0.5
-    if 0.5 <= rounded_rating <= 5.0:
-        return rounded_rating
-    else:
-        raise ValueError(f"Rating {rating} is outside the valid range of 0.5 to 5.0")
-
-def validate_year(input_year):
-    current_year = datetime.now().year
-
-    try:
-        year = int(input_year)
-    except:
-        raise TypeError("Year must be an integer")
-    
-    if 1874 <= year <= (current_year+1):
-        return year
-    else:
-        raise ValueError(f"Year {year} is outside the valid range of 1874 to {current_year+1}")
-
-def load_csv(filename):
-    movies = []
-    with open(filename, 'r', newline='', encoding='utf-8') as csvfile:
-        reader = csv.reader(csvfile)
-        next(reader)  # Skip header
-        for row in reader:
-            movies.append(Movie(*row))
-    return movies
-
-def save_csv(filename, movies):
-    with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(['Date', 'Name', 'Year', 'Letterboxd URI', 'Rating'])
-        for movie in movies:
-            writer.writerow([movie.date, movie.name, movie.year, movie.uri, movie.rating])
-
-def create_working_copy(original_file, working_file):
-    with open(original_file, 'r', encoding='utf-8') as original:
-        with open(working_file, 'w', encoding='utf-8') as working:
-            working.write(original.read())
-
-def create_movie_bag(movies):
-    return deque(random.sample(movies, len(movies)))
-
-def select_movies(bag, num_movies):
-    # Select up to num_movies, but not more than what's in the bag
-    num_to_select = min(num_movies, len(bag))
-    
-    selected = []
-    used_ratings = set()
-    temp_bag = []
-    
-    # First pass: select movies with unique ratings
-    while bag and len(selected) < num_to_select:
-        movie = bag.popleft()
-        if movie.rating not in used_ratings:
-            selected.append(movie)
-            used_ratings.add(movie.rating)
-        else:
-            temp_bag.append(movie)
-    
-    # Return unselected movies to the bag
-    bag.extend(temp_bag)
-    
-    # Second pass: fill remaining slots with any movies
-    while len(selected) < num_to_select and bag:
-        selected.append(bag.popleft())
-    
-    return selected
-
-def update_ratings(movies, ranking):
-    # Sort the movies by their current ratings (highest to lowest)
-    sorted_movies = sorted(movies, key=lambda m: m.rating, reverse=True)
-    
-    # Create a mapping of new positions to current ratings
-    new_ratings = {i: movie.rating for i, movie in enumerate(sorted_movies)}
-    
-    # Assign new ratings based on the user's ranking
-    for new_pos, old_pos in enumerate(ranking):
-        movies[old_pos].rating = new_ratings[new_pos]
-
-def compare_csvs(original_file, working_file, diff_file):
-    original_movies = {(m.name, m.year): m for m in load_csv(original_file)}
-    working_movies = {(m.name, m.year): m for m in load_csv(working_file)}
-    
-    changed_movies = [
-        working_movies[(name, year)]
-        for (name, year) in original_movies
-        if original_movies[(name, year)].rating != working_movies[(name, year)].rating
-    ]
-    
-    save_csv(diff_file, changed_movies)
+@dataclass
+class AppState:
+    bag_cycle_count: int = 1
+    total_ranked_count: int = 0
+    movies_in_bag: int = 0
+    selected_movies: List[Movie] = None
+    previous_movies: Optional[List[Movie]] = None
+    fullscreen: bool = False
 
 class MovieRankingApp:
-    def __init__(self, master):
+    def __init__(self, master: tk.Tk, mode, new_movie):
         self.master = master
         self.master.title("Snekboxd")
         
+        self.state = AppState()
+        self.setup_window()
+        self.setup_styles()
+        self.setup_file_paths()
+        self.load_initial_data()
+        self.create_widgets()
+        self.setup_bindings()
+
+        self.mode = mode
+        self.new_movie = new_movie
+        
+        self.master.after(100, self.initial_layout)
+
+    def setup_window(self):
         # Get primary monitor information
-        self.monitor = screeninfo.get_monitors()[0]
+        monitor = screeninfo.get_monitors()[0]
         
         # Set initial window size to 90% of screen size
-        self.window_width = int(self.monitor.width * 0.9)
-        self.window_height = int(self.monitor.height * 0.9)
+        self.window_width = int(monitor.width * 0.9)
+        self.window_height = int(monitor.height * 0.9)
         
         # Calculate x and y coordinates for the Tk root window
-        x = (self.monitor.width // 2) - (self.window_width // 2)
-        y = (self.monitor.height // 2) - (self.window_height // 2)
+        x = (monitor.width // 2) - (self.window_width // 2)
+        y = (monitor.height // 2) - (self.window_height // 2)
         
         # Set the dimensions of the screen and where it is placed
         self.master.geometry(f'{self.window_width}x{self.window_height}+{x}+{y}')
-
-        # Make window resizable
         self.master.resizable(True, True)
 
-        # Initialize fullscreen state
-        self.fullscreen = False
+    def setup_styles(self):
+        style = ttk.Style()
+        style.theme_use('clam')  # You can change this to any available theme
+        
+        # Configure styles for various widgets
+        style.configure('TFrame', background='#f0f0f0')
+        style.configure('TLabel', background='#f0f0f0', font=('Arial', 12))
+        style.configure('TButton', font=('Arial', 12))
+        style.configure('TEntry', font=('Arial', 12))
 
+    def setup_file_paths(self):
         self.original_file = './db/ratings.csv'
         self.working_file = './db/working_ratings.csv'
         self.diff_file = './db/changed_ratings.csv'
-
         self.no_image_md5 = get_file_md5('./assets/no_image.jpg')
 
+    def load_initial_data(self):
         create_working_copy(self.original_file, self.working_file)
         self.movies = load_csv(self.working_file)
         self.bag = create_movie_bag(self.movies)
-
-        self.bag_cycle_count = 1
-        self.total_ranked_count = 0
-        self.movies_in_bag = len(self.bag)
-
-        self.selected_movies = []
-        self.previous_movies = None
+        self.state.movies_in_bag = len(self.bag)
         self.movie_frames = []
 
-        # Modify the main frame to have padding on all sides
-        self.main_frame = ttk.Frame(self.master, padding="20 20 20 20")
+    def create_widgets(self):
+        self.main_frame = ttk.Frame(self.master)
         self.main_frame.pack(expand=True, fill=tk.BOTH)
 
-        # Create a frame for the movies with a specific size
+        self.counter_frame = ttk.Frame(self.main_frame)
+        self.counter_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10)
+
+        self.input_frame = ttk.Frame(self.main_frame)
+        self.input_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=10)
+
         self.movies_frame = ttk.Frame(self.main_frame)
-        self.movies_frame.pack(expand=True, fill=tk.BOTH, pady=20)
+        self.movies_frame.pack(side=tk.TOP, expand=True, fill=tk.BOTH, pady=10)
         self.movies_frame.pack_propagate(False)
 
-        # Create a frame for the input and buttons
-        self.input_frame = ttk.Frame(self.main_frame)
-        self.input_frame.pack(fill=tk.X, pady=20)
+        self.create_counter_labels()
+        self.create_input_widgets()
 
-        # Create a frame for the counters
-        self.counter_frame = ttk.Frame(self.main_frame)
-        self.counter_frame.pack(fill=tk.X, pady=20)
+    def create_counter_labels(self):
+        self.bag_cycle_label = ttk.Label(self.counter_frame, text="Bag Cycles: 1", font=('Arial', 12))
+        self.bag_cycle_label.pack(side=tk.LEFT, padx=(0, 20))
 
+        self.total_ranked_label = ttk.Label(self.counter_frame, text="Total Ranked: 0", font=('Arial', 12))
+        self.total_ranked_label.pack(side=tk.LEFT, padx=(0, 20))
+
+        self.movies_in_bag_label = ttk.Label(self.counter_frame, text=f"Movies in Bag: {self.state.movies_in_bag}", font=('Arial', 12))
+        self.movies_in_bag_label.pack(side=tk.LEFT)
+
+    def create_input_widgets(self):
+        self.ranking_entry = ttk.Entry(self.input_frame, font=('Arial', 16), width=10)
+        self.ranking_entry.pack(side=tk.LEFT, padx=(0, 20))
+
+        self.submit_button = ttk.Button(self.input_frame, text="Submit Ranking", command=self.submit_ranking, takefocus=0)
+        self.submit_button.pack(side=tk.LEFT, padx=(0, 20))
+
+        self.quit_button = ttk.Button(self.input_frame, text="Quit", command=self.quit_app, takefocus=0)
+        self.quit_button.pack(side=tk.LEFT, padx=(0, 20))
+
+        self.undo_button = ttk.Button(self.input_frame, text="Undo", command=self.undo_last, takefocus=0)
+        self.undo_button.pack(side=tk.LEFT)
+
+    def create_counter_labels(self):
         self.bag_cycle_label = ttk.Label(self.counter_frame, text="Bag Cycles: 1", font=('Arial', 14))
         self.bag_cycle_label.pack(side=tk.LEFT, padx=(0, 20))
 
         self.total_ranked_label = ttk.Label(self.counter_frame, text="Total Ranked: 0", font=('Arial', 14))
         self.total_ranked_label.pack(side=tk.LEFT, padx=(0, 20))
 
-        self.movies_in_bag_label = ttk.Label(self.counter_frame, text=f"Movies in Bag: {self.movies_in_bag}", font=('Arial', 14))
+        self.movies_in_bag_label = ttk.Label(self.counter_frame, text=f"Movies in Bag: {self.state.movies_in_bag}", font=('Arial', 14))
         self.movies_in_bag_label.pack(side=tk.LEFT)
 
+    def create_input_widgets(self):
         self.ranking_entry = ttk.Entry(self.input_frame, font=('Arial', 24), width=10)
         self.ranking_entry.pack(side=tk.LEFT, padx=(0, 20))
 
@@ -296,99 +150,55 @@ class MovieRankingApp:
         self.undo_button = ttk.Button(self.input_frame, text="Undo", command=self.undo_last, takefocus=0)
         self.undo_button.pack(side=tk.LEFT)
 
+    def setup_bindings(self):
         self.master.bind('<Return>', lambda event: self.submit_ranking())
         self.master.bind('<Tab>', lambda event: self.submit_ranking())
         self.master.bind('<Escape>', lambda event: self.quit_app())
-
+        self.master.bind("<Configure>", self.on_resize)
         self.master.protocol("WM_DELETE_WINDOW", self.quit_app)
 
-        # Modify the binding for window resizing
-        self.master.bind("<Configure>", self.on_resize)
-
-        # Add bindings for fullscreen toggle
-        self.master.bind("<F11>", self.toggle_fullscreen)  # Changed from Command-f to F11 for cross-platform compatibility
-        self.master.bind("<Command-f>", self.toggle_fullscreen)
-        
-        self.master.after(100, self.initial_layout)
-
-    def fetch_missing_posters(self):
-        for movie in self.selected_movies:
-            if os.path.exists(movie.image_path):
-                if get_file_md5(movie.image_path) == self.no_image_md5:
-                    logging.info(f"Fetching poster for {movie.name}")
-                    poster_url = get_tmdb_poster_url(movie.uri)
-                    if poster_url:
-                        if download_poster(poster_url, movie.image_path):
-                            logging.info(f"Successfully downloaded poster for {movie.name}")
-                        else:
-                            logging.error(f"Failed to download poster for {movie.name}")
-                    else:
-                        logging.error(f"Poster not found for {movie.name}")
-
     def initial_layout(self):
-        # This method is called once after the window has been drawn
         self.window_width = self.master.winfo_width()
         self.window_height = self.master.winfo_height()
         
-        # Set the size of the movies_frame explicitly
-        movies_frame_height = int(self.window_height * 0.7)  # 70% of window height
-        self.movies_frame.configure(width=self.window_width - 40, height=movies_frame_height)  # -40 for main frame padding
+        movies_frame_height = int(self.window_height * 0.85)
+        self.movies_frame.configure(width=self.window_width - 40, height=movies_frame_height)
         
         self.load_new_movies()
 
     def on_resize(self, event):
-        # This method is called whenever the window is resized
-        if event.widget == self.master and not self.fullscreen:
-            # Update window size variables
-            self.window_width = event.width
-            self.window_height = event.height
+        if event.widget == self.master and not self.state.fullscreen:
+            # Get the actual window size
+            self.window_width = self.master.winfo_width()
+            self.window_height = self.master.winfo_height()
             
-            # Update movies_frame size
-            movies_frame_height = int(self.window_height * 0.7)  # 70% of window height
-            self.movies_frame.configure(width=self.window_width - 40, height=movies_frame_height)
-            
-            # Delay the layout update to avoid excessive redraws
-            self.master.after_cancel(self.resize_job) if hasattr(self, 'resize_job') else None
-            self.resize_job = self.master.after(100, self.update_layout)
-
-    def toggle_fullscreen(self, event=None):
-        self.fullscreen = not self.fullscreen
-        self.master.attributes("-fullscreen", self.fullscreen)
-        self.update_layout()
-
-    def end_fullscreen(self, event=None):
-        self.fullscreen = False
-        self.master.attributes("-fullscreen", False)
-        self.update_layout()
+            # Update layout
+            self.update_layout()
 
     def update_layout(self):
-        if not self.selected_movies:
+        if not self.state.selected_movies:
             return
 
         for frame in self.movie_frames:
             frame.destroy()
-        self.movie_frames.clear()
+        self.movie_frames = []
 
-        num_movies = len(self.selected_movies)
+        num_movies = len(self.state.selected_movies)
 
-        # Use current window size for calculations
         movies_frame_width = self.movies_frame.winfo_width()
         movies_frame_height = self.movies_frame.winfo_height()
 
-        # Calculate available width for all posters
-        available_width = movies_frame_width - (20 * (num_movies - 1))  # 20px spacing between posters
+        available_width = movies_frame_width - (20 * (num_movies))
 
-        # Calculate image width and height
         img_width = available_width // num_movies
         img_height = int(img_width * 1.5)
 
-        # Cap the image height at 75% of the frame height
-        max_img_height = int(movies_frame_height * 0.75)
+        max_img_height = int(movies_frame_height * 0.85)
         if img_height > max_img_height:
             img_height = max_img_height
             img_width = int(img_height / 1.5)
 
-        for i, movie in enumerate(self.selected_movies):
+        for i, movie in enumerate(self.state.selected_movies):
             frame = ttk.Frame(self.movies_frame)
             frame.pack(side=tk.LEFT, anchor=tk.N, padx=(0, 20) if i < num_movies - 1 else 0)
 
@@ -400,7 +210,6 @@ class MovieRankingApp:
                 label.image = photo
                 label.pack()
 
-            # Adjust font sizes based on image width
             title_font_size = max(8, min(12, int(img_width / 10)))
             info_font_size = max(6, min(10, int(img_width / 12)))
 
@@ -413,52 +222,60 @@ class MovieRankingApp:
     def load_new_movies(self):
         for frame in self.movie_frames:
             frame.destroy()
-        self.movie_frames.clear()
+        self.movie_frames = []
 
-        # If fewer than two movies are left, refill the bag
         if len(self.bag) < 2:
             if len(self.bag) > 0:
                 self.bag.popleft()
             self.bag.extend(self.movies)
             shuffle_deque(self.bag)
-            self.bag_cycle_count += 1
-            self.bag_cycle_label.config(text=f"Bag Cycles: {self.bag_cycle_count}")
+            self.state.bag_cycle_count += 1
+            self.bag_cycle_label.config(text=f"Bag Cycles: {self.state.bag_cycle_count}")
 
-        # Select up to 5 movies
         num_movies = min(5, len(self.bag))
-        self.selected_movies = select_movies(self.bag, num_movies)
+        self.state.selected_movies = select_movies(self.bag, num_movies)
 
-        if mode == "2" and new_movie not in self.selected_movies:
-            self.selected_movies.append(new_movie)
-        else:
-            num_movies -= 1
+        if self.mode == "2" and self.new_movie not in self.state.selected_movies:
+            self.state.selected_movies.append(self.new_movie)
 
         self.fetch_missing_posters()
 
-        # Update movies in bag counter
-        self.movies_in_bag = len(self.bag)
-        self.movies_in_bag_label.config(text=f"Movies in Bag: {self.movies_in_bag}")
+        self.state.movies_in_bag = len(self.bag)
+        self.movies_in_bag_label.config(text=f"Movies in Bag: {self.state.movies_in_bag}")
         
-        # Sort selected movies by their current rating, lowest to highest
-        self.selected_movies.sort(key=lambda movie: movie.rating)
+        self.state.selected_movies.sort(key=lambda movie: movie.rating)
 
         self.update_layout()
 
         self.ranking_entry.delete(0, tk.END)
         self.ranking_entry.focus_set()
 
+    def fetch_missing_posters(self):
+        for movie in self.state.selected_movies:
+            if os.path.exists(movie.image_path):
+                if get_file_md5(movie.image_path) == self.no_image_md5:
+                    logging.info(f"Fetching poster for {movie.name}")
+                    poster_url = get_tmdb_poster_url(movie.uri)
+                    if poster_url:
+                        if download_poster(poster_url, movie.image_path):
+                            logging.info(f"Successfully downloaded poster for {movie.name}")
+                        else:
+                            logging.error(f"Failed to download poster for {movie.name}")
+                    else:
+                        logging.error(f"Poster not found for {movie.name}")
+
     def submit_ranking(self):
         ranking = self.ranking_entry.get()
-        num_movies = len(self.selected_movies)
+        num_movies = len(self.state.selected_movies)
         if len(ranking) == 0:
             ranking = "654321"[6-num_movies:6]
         if len(ranking) == num_movies and ranking.isdigit() and set(ranking) == set(map(str, range(1, num_movies + 1))):
             ranking = [int(r) - 1 for r in ranking]
-            update_ratings(self.selected_movies, ranking)
+            update_ratings(self.state.selected_movies, ranking)
             save_csv(self.working_file, self.movies)
-            self.total_ranked_count += num_movies
-            self.total_ranked_label.config(text=f"Total Ranked: {self.total_ranked_count}")
-            self.previous_movies = self.selected_movies
+            self.state.total_ranked_count += num_movies
+            self.total_ranked_label.config(text=f"Total Ranked: {self.state.total_ranked_count}")
+            self.state.previous_movies = self.state.selected_movies
             self.load_new_movies()
         else:
             self.ranking_entry.delete(0, tk.END)
@@ -466,56 +283,24 @@ class MovieRankingApp:
         self.ranking_entry.focus_set()
 
     def undo_last(self):
-        if self.previous_movies == None:
+        if self.state.previous_movies is None:
             print("Cannot Undo!")
         else:
-            for movie in self.selected_movies:
-                if movie != new_movie:
+            for movie in self.state.selected_movies:
+                if movie != self.new_movie:
                     self.bag.append(movie)
-                    self.total_ranked_count -= 1
-            self.selected_movies = self.previous_movies
-            self.previous_movies = None
+                    self.state.total_ranked_count -= 1
+            self.state.selected_movies = self.state.previous_movies
+            self.state.previous_movies = None
             
-            num_movies = len(self.selected_movies)
+            self.total_ranked_label.config(text=f"Total Ranked: {self.state.total_ranked_count}")
+
+            self.state.movies_in_bag = len(self.bag)
+            self.movies_in_bag_label.config(text=f"Movies in Bag: {self.state.movies_in_bag}")
             
-            self.total_ranked_label.config(text=f"Total Ranked: {self.total_ranked_count}")
+            self.state.selected_movies.sort(key=lambda movie: movie.rating)
 
-            for frame in self.movie_frames:
-                frame.destroy()
-            self.movie_frames.clear()
-
-            # Update movies in bag counter
-            self.movies_in_bag = len(self.bag)
-            self.movies_in_bag_label.config(text=f"Movies in Bag: {self.movies_in_bag}")
-            
-            # Sort selected movies by their current rating, lowest to highest
-            self.selected_movies.sort(key=lambda movie: movie.rating)
-
-            # Calculate dynamic padding and image size based on number of movies
-            padx = max(10, int(100 / num_movies))
-            img_width = min(200, int(1400 / num_movies))
-            img_height = int(img_width * 1.5)  # Maintain aspect ratio
-
-            for i, movie in enumerate(self.selected_movies, 1):
-                frame = tk.Frame(self.movies_frame)
-                frame.pack(side=tk.LEFT, padx=padx, expand=True)
-
-                if movie.image_path:
-                    img = Image.open(movie.image_path)
-                    img = img.resize((img_width, img_height), Image.LANCZOS)
-                    photo = ImageTk.PhotoImage(img)
-                    label = tk.Label(frame, image=photo)
-                    label.image = photo
-                    label.pack()
-
-                # Adjust font sizes based on number of movies
-                title_font_size = max(12, int(20 - num_movies))
-                rating_font_size = max(10, int(18 - num_movies))
-
-                tk.Label(frame, text=f"{i}. {movie.name}\n({movie.year})", wraplength=img_width, font=('Arial', title_font_size)).pack()
-                tk.Label(frame, text=f"Rating: {movie.rating}", font=('Arial', rating_font_size)).pack()
-
-                self.movie_frames.append(frame)
+            self.update_layout()
 
             self.ranking_entry.delete(0, tk.END)
             self.ranking_entry.focus_set()
@@ -524,7 +309,8 @@ class MovieRankingApp:
         compare_csvs(self.original_file, self.working_file, self.diff_file)
         print(f"Changes saved to {self.diff_file}")
 
-        if new_movie:
+        if self.new_movie:
+            new_movie = self.new_movie
             with open(self.working_file, 'a', newline='', encoding='utf-8') as working_file:
                 writer = csv.writer(working_file)
                 writer.writerow([new_movie.date, new_movie.name, new_movie.year, new_movie.uri, new_movie.rating])
@@ -542,36 +328,44 @@ class MovieRankingApp:
             print(f"Error deleting {self.working_file}: {e}")
 
         self.master.quit()
-        
-def main():
-    global mode
-    global new_movie
-    mode = "3"
-    
-    new_movie = None
-    new_movie_name = None
-    new_movie_date = datetime.today().strftime('%Y-%m-%d')
-    new_movie_year = 0
-    new_movie_rating = 0
-    new_movie_uri = None
 
-    while mode not in "12":
-        print("Choose operation mode:\n1.) Re-evaluate Existing Ratings\n2.) Rank Newly Watched Film Against Others")
-        mode = input()
-    if mode == "2":
+def get_new_movie_info():
+    confirmed = False
+    while not confirmed:
         print("Enter the movie's title as it appears on Letterboxd:")
-        new_movie_name = input()
-        print("Enter the movie's release year, according to Letterboxd:")
-        new_movie_year = str(validate_year(input()))
-        print("Enter the shortened Letterboxd URL for new movie, i.e. 'https://boxd.it/29MQ':")
-        new_movie_uri = input()
-        print("Enter your initial rating between 0.5 and 5.0")
-        new_movie_rating = str(validate_rating(input()))
+        name = input()
+        year = validated_year_input("Enter the movie's release year, according to Letterboxd:")
+        uri = validated_uri_input("Enter the shortened Letterboxd URL for new movie, i.e. 'https://boxd.it/29MQ':")
+        rating = validated_rating_input("Enter your initial rating between 0.5 and 5.0")
+        print(f"\nYou entered the following:\n{name = }\n{year = }\n{uri = }\n{rating = }\n\nProceed? Y/N")
+        confirmed = True if input().lower() in ["yes","1","true","proceed","sure","ok","yeah, baby!","y"] else False
+        print("")
+    
+    return Movie(
+        date=datetime.today().strftime('%Y-%m-%d'),
+        name=name,
+        year=year,
+        uri=uri,
+        rating=rating
+    )
 
-        
-        new_movie = Movie(new_movie_date,new_movie_name,new_movie_year,new_movie_uri,new_movie_rating)
+def get_operation_mode() -> str:
+    while True:
+        print("Choose operation mode:")
+        print("1.) Re-evaluate Existing Ratings")
+        print("2.) Rank Newly Watched Film Against Others")
+        mode = input()
+        if mode in ["1", "2"]:
+            return mode
+        print("Invalid input. Please enter 1 or 2.")
+
+def main():
+    mode = get_operation_mode()
+    new_movie = get_new_movie_info() if mode == "2" else None
+
     root = tk.Tk()
-    app = MovieRankingApp(root)
+    app = MovieRankingApp(root, mode, new_movie)
+    
     root.mainloop()
 
 if __name__ == "__main__":
